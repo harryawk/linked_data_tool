@@ -42,6 +42,7 @@ const convertCSV = async (req, res) => {
   var fs = require('fs')
 
   var filename = req.file.filename
+  var hostname = req.headers.host
 
   var stream = fs.createReadStream('./public/uploads/' + filename)
     .pipe(csvConverter({
@@ -72,7 +73,7 @@ const convertCSV = async (req, res) => {
       var inserted_links = []
       for (let i = 0; i < insert_status['insertedCount']; i++) {
         // generate URIs
-        inserted_links.push('http://localhost:5000/dataset/linked_data/' + insert_status['insertedIds']['' + i])
+        inserted_links.push(`http://${hostname}/dataset/linked_data/${insert_status['insertedIds']['' + i]}`)
       }
 
       // add context (data vocab)
@@ -142,15 +143,16 @@ app.get('/dataset/linked_data/:id_entity', (req, res) =>
 var handleLinkingData = async (req, res) => {
 
   var body = req.body
+  var hostname = req.headers.host
 
   console.log(req.body)
 
   var subj = body['subj']
   var obj = body['obj']
   var pred_dest = {}
-  pred_dest[body['pred']] = 'http://localhost:5000/dataset/linked_data/' + obj
+  pred_dest[body['pred']] = `http://${hostname}/dataset/linked_data/${obj}`
   var pred_src = {}
-  pred_src[body['pred']] = 'http://localhost:5000/dataset/linked_data/' + subj
+  pred_src[body['pred']] = `http://${hostname}/dataset/linked_data/${subj}`
 
   var connection_string = 'mongodb://127.0.0.1/linkeddata'
   var db = await MongoClient.connect(connection_string)
@@ -187,5 +189,12 @@ app.post('/linking', (req, res) => {
 
   handleLinkingData(req, res).then(function() {
     console.log('done')
+  })
+})
+
+app.get('/test', (req, res) => {
+
+  res.send({
+    hostname: req.headers.host
   })
 })
