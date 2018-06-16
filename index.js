@@ -7,8 +7,10 @@ var _ = require('lodash')
 
 var app = express()
 var bodyParser = require('body-parser')
+var cors = require('cors')
   
 app.use(express.static(path.join(__dirname, 'public')))
+  .use(cors())
   .use(bodyParser.json())
   .use(bodyParser.urlencoded({ extended: true }))
   .set('views', path.join(__dirname, 'views'))
