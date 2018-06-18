@@ -44,10 +44,11 @@ const onlyConvertCSV = async (req, res) => {
   let fs = require('fs')
 
   var filename = req.file.filename
+  var separator = req.body.separator
 
   var stream = fs.createReadStream('./public/uploads/' + filename)
     .pipe(csvConverter({
-      separator: ';'
+      separator: separator
     }))
     .pipe(fs.createWriteStream('./public/uploads/' + filename + '.json'))
 
@@ -64,6 +65,7 @@ const onlyConvertCSV = async (req, res) => {
       var converted_data = JSON.parse(sent_data)
 
       res.send({
+        status: true,
         data: converted_data
       })
     })
