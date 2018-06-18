@@ -39,7 +39,38 @@ const csvConverter = require('csv2json')
 const xlsConverter = require('xls2json')
 const xlsxConverter = require('xlsx2json')
 
-const convertCSV = async (req, res) => {
+const onlyConvertCSV = async (req, res) => {
+
+  let fs = require('fs')
+
+  var filename = req.file.filename
+
+  var stream = fs.createReadStream('./public/uploads/' + filename)
+    .pipe(csvConverter({
+      separator: ';'
+    }))
+    .pipe(fs.createWriteStream('./public/uploads/' + filename + '.json'))
+
+  stream.on('finish', function () {
+
+    var readstream = fs.createReadStream('./public/uploads/' + filename + '.json')
+    var sent_data = ''
+    readstream.on('data', (chunk) => {
+      var read_data = chunk
+      sent_data += read_data
+    })
+
+    readstream.on('end', async () => {
+      var converted_data = JSON.parse(sent_data)
+
+      res.send({
+        data: converted_data
+      })
+    })
+  })
+}
+
+const convertCSVAPI = async (req, res) => {
 
   var fs = require('fs')
 
@@ -105,9 +136,14 @@ app.post('/convert/*', upload.single('data'), (req, res) => {
 
   switch (req.url) {
     case '/convert/csv':
-      convertCSV(req, res).then(function(result) {
+      convertCSVAPI(req, res).then(function(result) {
         console.log('convert CSV done')
         // res.send(result)
+      })
+      break;
+    case '/convert/web/csv':
+      onlyConvertCSV(req, res).then(function(result) {
+        console.log('convert CSV for web done')
       })
       break;
     default:
