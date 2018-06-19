@@ -4,6 +4,7 @@ const PORT = process.env.PORT || 5000
 var MongoClient = require('mongodb').MongoClient
 var mongo = require('mongodb')
 var _ = require('lodash')
+var jsonld = require('jsonld')
 
 var app = express()
 var bodyParser = require('body-parser')
@@ -237,4 +238,33 @@ app.get('/test', (req, res) => {
   res.send({
     hostname: req.headers.host
   })
+})
+
+app.post('/data/rdf', async (req, res) => {
+
+  try {
+    
+    // console.log(req.body.data)
+    let rdf = ''
+    for (let data of JSON.parse(req.body.data)) {
+      data = await jsonld.expand(data)
+      data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
+      console.log(data)
+      rdf += await jsonld.toRDF(data, {format: 'application/n-quads'})
+      console.log(rdf)
+    }
+
+    console.log(await jsonld.fromRDF(rdf, {format: 'application/n-quads'}))
+    res.send({
+      success: true,
+      data: rdf
+    })
+  } catch (e) {
+    res.send({
+      success: true,
+      err: e
+    })
+  }
+
+  // let expanded = await jsonld.expand()
 })
