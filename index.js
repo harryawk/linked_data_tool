@@ -240,6 +240,99 @@ app.get('/test', (req, res) => {
   })
 })
 
+var storeRDF = async (triples) => {
+  // var inserted = JSON.stringify("INSERT IN GRAPH <http://example.com/datasets/graph/> { " + triples + " } ")
+  var inserted = "INSERT IN GRAPH <http://example.com/datasets/graph/> { " + triples + " } "
+
+  console.log('=== inserted ===')
+  // console.log(JSON.parse(inserted))
+  console.log(inserted)
+  console.log('=== inserted ===')
+
+  var header = {
+    'Content-Type': 'application/sparql-query',
+    'Content-Length': Buffer.byteLength(inserted)
+  }
+  console.log(' t 1')
+
+  var request_options = {
+    host: 'localhost',
+    port: 8890,
+    auth: 'dba:dba',
+    path: '/DAV/home/dba/rdf_sink/mydata',
+    method: 'POST',
+    headers: header
+  }
+
+  let http = require('http')
+
+  try {
+    
+    var do_request = function(the_request_options) {
+      return new Promise ((resolve, reject) => {
+        var response_data = ''
+        var is_data_received = false
+        var data_received = function(val) {
+          is_data_received = val
+        }
+        
+        let req = http.request(the_request_options, function(res) {
+          res.setEncoding('utf-8')
+          // console.log(res)
+          // res.setEncoding('utf-8')
+          res.on('data', function(data) {
+            // console.log('=== data ===')
+            // console.log(data)
+            response_data += data
+            // console.log('=== data ===')
+          })
+          
+          res.on('end', function() {
+            data_received(true)
+            // console.log(is_data_received)
+            resolve(response_data)
+            console.log('done')
+          })
+        })
+        
+        req.on('error', function(e) {
+          console.log('Error request : ' + e)
+          reject(e)
+        })
+        
+        req.write(inserted)
+        req.end()
+      })
+    }
+
+    var the_response = await do_request(request_options)
+
+    console.log(the_response)
+    
+    // console.log()
+
+    return {
+      success: true,
+      data: the_response
+    }
+    // let res = req
+    
+    // return {
+    //   success: true,
+    //   data: response_data
+    // }
+
+  } catch (e) {
+    console.log(e)
+    return {
+      success: false,
+      err: e
+    }
+  }
+
+
+}
+
 app.post('/data/rdf', async (req, res) => {
 
   try {
@@ -255,6 +348,11 @@ app.post('/data/rdf', async (req, res) => {
     }
 
     console.log(await jsonld.fromRDF(rdf, {format: 'application/n-quads'}))
+
+    console.log('==== storeRDF(rdf) ====')
+    console.log(await storeRDF(rdf))
+    console.log('==== storeRDF(rdf) ====')
+
     res.send({
       success: true,
       data: rdf
