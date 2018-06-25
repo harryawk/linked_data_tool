@@ -312,20 +312,20 @@ var storeRDF = async (triples) => {
     // console.log()
 
     return {
-      success: true,
+      status: true,
       data: the_response
     }
     // let res = req
     
     // return {
-    //   success: true,
+    //   status: true,
     //   data: response_data
     // }
 
   } catch (e) {
     console.log(e)
     return {
-      success: false,
+      status: false,
       err: e
     }
   }
@@ -354,12 +354,12 @@ app.post('/data/rdf', async (req, res) => {
     console.log('==== storeRDF(rdf) ====')
 
     res.send({
-      success: true,
+      status: true,
       data: rdf
     })
   } catch (e) {
     res.send({
-      success: true,
+      status: true,
       err: e
     })
   }
