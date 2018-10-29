@@ -5,6 +5,8 @@ var MongoClient = require('mongodb').MongoClient
 var mongo = require('mongodb')
 var _ = require('lodash')
 var jsonld = require('jsonld')
+var $rdf = require('rdflib')
+var csvtojson = require('csvtojson')
 
 var app = express()
 var bodyParser = require('body-parser')
@@ -226,8 +228,6 @@ var handleLinkingData = async (req, res) => {
 
 app.post('/linking', (req, res) => {
   
-  // linking entities
-
   handleLinkingData(req, res).then(function() {
     console.log('done')
   })
@@ -241,11 +241,10 @@ app.get('/test', (req, res) => {
 })
 
 var storeRDF = async (triples) => {
-  // var inserted = JSON.stringify("INSERT IN GRAPH <http://example.com/datasets/graph/> { " + triples + " } ")
+
   var inserted = "INSERT IN GRAPH <http://example.com/datasets/graph/> { " + triples + " } "
 
   console.log('=== inserted ===')
-  // console.log(JSON.parse(inserted))
   console.log(inserted)
   console.log('=== inserted ===')
 
@@ -278,18 +277,13 @@ var storeRDF = async (triples) => {
         
         let req = http.request(the_request_options, function(res) {
           res.setEncoding('utf-8')
-          // console.log(res)
-          // res.setEncoding('utf-8')
+
           res.on('data', function(data) {
-            // console.log('=== data ===')
-            // console.log(data)
             response_data += data
-            // console.log('=== data ===')
           })
           
           res.on('end', function() {
             data_received(true)
-            // console.log(is_data_received)
             resolve(response_data)
             console.log('done')
           })
@@ -307,20 +301,10 @@ var storeRDF = async (triples) => {
 
     var the_response = await do_request(request_options)
 
-    console.log(the_response)
-    
-    // console.log()
-
     return {
       status: true,
       data: the_response
     }
-    // let res = req
-    
-    // return {
-    //   status: true,
-    //   data: response_data
-    // }
 
   } catch (e) {
     console.log(e)
@@ -337,14 +321,11 @@ app.post('/data/rdf', async (req, res) => {
 
   try {
     
-    // console.log(req.body.data)
     let rdf = ''
     for (let data of JSON.parse(req.body.data)) {
       data = await jsonld.expand(data)
       data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
-      console.log(data)
       rdf += await jsonld.toRDF(data, {format: 'application/n-quads'})
-      console.log(rdf)
     }
 
     console.log(await jsonld.fromRDF(rdf, {format: 'application/n-quads'}))
@@ -364,5 +345,69 @@ app.post('/data/rdf', async (req, res) => {
     })
   }
 
-  // let expanded = await jsonld.expand()
 })
+
+
+///////////////////////////////////////
+///// RDF Subject Page + Web API //////
+///////////////////////////////////////
+var rdf = require('rdf')
+const {Client} = require('virtuoso-sparql-client')
+
+const CONTEXT = {
+  nama: "http://schema.org/name",
+  alamat: "http://schema.org/address",
+  gaji: "http://schema.org/baseSalary"
+}
+
+app.get('/dataset/*', function (req, res) {
+
+  var received_url = "http://example.com" + req.url
+  const DbpediaClient = new Client('http://localhost:8890/sparql')
+
+  if (req.headers['content-type'] === 'application/json') {
+    console.log('appjson')
+  
+    DbpediaClient.query(`DESCRIBE <${received_url}> FROM <http://example.com/datasets/graph/>`)
+      .then(async (subject_jsonld) => {
+  
+        if (_.isEmpty(subject_jsonld)) {
+          res.send(subject_jsonld)
+          return
+        }
+        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
+        res.send(compacted)
+      })
+      .catch((err) => {
+        res.send(err)
+      })
+  } else {
+
+    DbpediaClient.query(`DESCRIBE <${received_url}> FROM <http://example.com/datasets/graph/>`)
+      .then(async (subject_jsonld) => {
+
+        if (_.isEmpty(subject_jsonld)) {
+          // send 404 page
+          res.render('pages/404')
+          // res.send(subject_jsonld)
+          return
+        }
+
+
+        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
+        // send subject page with resource
+        delete compacted['@context']
+        res.render('pages/rdfsubject', {
+          'subj': compacted
+        })
+        // res.send(compacted)
+      })
+      .catch((err) => {
+        res.send(err)
+      })
+  }
+
+
+})
+
+
