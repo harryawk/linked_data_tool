@@ -1,0 +1,82 @@
+-- Search all foreign key and referenced table in a table in relational database
+
+SELECT 
+  TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME
+FROM
+  INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE
+  TABLE_SCHEMA = 'lpik_dev_ies' AND
+  TABLE_NAME = 'table_lookup' AND
+  REFERENCED_TABLE_NAME IS NOT NULL;
+
+
+-- Get data type of a column
+
+SELECT DATA_TYPE 
+  FROM INFORMATION_SCHEMA.COLUMNS 
+  WHERE table_name = 'table_name' 
+    AND COLUMN_NAME = 'column_name' 
+    AND TABLE_SCHEMA = 'database_name';
+
+
+-- Get columns inside a table
+
+SELECT COLUMN_NAME 
+  FROM information_schema.columns 
+  WHERE table_schema='tugasakhir' 
+    AND table_name='tabel_a';
+
+
+-- Get primary key column inside a table
+SELECT 
+  TABLE_NAME, COLUMN_NAME, CONSTRAINT_NAME, 
+  REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
+FROM
+  INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+WHERE
+  TABLE_SCHEMA = 'tugasakhir' AND
+  TABLE_NAME = 'tabel_a' AND
+  CONSTRAINT_NAME = 'PRIMARY';
+
+
+-- list all tables inside a database
+select tabel_name 
+  from information_schema.tables 
+  where table_schema = 'tugasakhir'
+
+
+-- Add foreign key to table
+
+alter table `tabel_a` add column `b_kolom_5` int;
+
+alter table `tabel_a` 
+  add constraint 
+    foreign key (`b_kolom_5`) 
+    REFERENCES `tabel_b`(`kolom_5`) 
+    on delete CASCADE 
+    on update restrict;
+
+-- promises
+
+// console.log(results)
+// res.send('asdf')
+
+// con.query(`SELECT TABLE_NAME, COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME
+//   FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE 
+//   WHERE
+//     TABLE_SCHEMA = 'tugasakhir' AND
+//     TABLE_NAME = '${reqBody['table_name']}' AND
+//     REFERENCED_TABLE_NAME IS NOT NULL;`, 
+  
+//   function (err, result, fields) {
+//     if (err) {
+//       res.status(500).send('Error: ' + err);
+//       return
+//     }
+
+//     // console.log(result)
+//     // // console.log(fields)
+//     // res.send(fields)
+
+
+//   })
