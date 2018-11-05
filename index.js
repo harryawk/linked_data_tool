@@ -7,6 +7,7 @@ var _ = require('lodash')
 var jsonld = require('jsonld')
 var $rdf = require('rdflib')
 var csvtojson = require('csvtojson')
+var mysql  = require('mysql')
 
 var app = express()
 var bodyParser = require('body-parser')
@@ -410,4 +411,149 @@ app.get('/dataset/*', function (req, res) {
 
 })
 
+app.get('/get/mysql', function(req, res) {
 
+  var reqBody = req.query
+
+  var con = mysql.createConnection({
+    host: "localhost",
+    user: "root",
+    password: "",
+    database: "information_schema"
+  })
+
+  var table_uris = {}
+  var table_columns = {}
+  var table_ranges = {}
+
+  var conversion_context = {}
+
+  var print_all = function() {
+    console.log('console.log(table_uris)')
+    console.log(table_uris)
+    console.log('console.log(table_uris)')
+    console.log('console.log(table_columns)')
+    console.log(table_columns)
+    console.log('console.log(table_columns)')
+    console.log('console.log(table_ranges)')
+    console.log(table_ranges)
+    console.log('console.log(table_ranges)')
+  }
+
+  var save_to_context_var = function() {
+    for (var [k, table_column] of Object.entries(table_columns)) {
+      for (var [column_name, column_uri] of Object.entries(table_column)) {
+        if (column_uri != '@id') {
+          conversion_context[column_name] = [column_uri]
+        }
+      }
+    }
+
+    console.log(conversion_context)
+
+    //TODO: Tambah algoritma untuk identifikasi URI vocab terkait dengan kolom
+
+
+  }
+
+  var fetchColumns = new Promise(function (resolve, reject) {
+    con.connect(function (err) {
+      if (err) {
+        res.status(500).send('Error: ' + err);
+        return
+      }
+
+      // var getTablesCallback = function(err, results, fields) {
+      //   for (var table of results) {
+      //     table_uris[table['TABLE_NAME']] = 'http://example.com/datatype/' + table['TABLE_NAME']
+      //   }
+
+      //   console.log(table_uris)
+      // }
+
+      con.query(`SELECT TABLE_NAME
+        FROM INFORMATION_SCHEMA.TABLES
+        WHERE
+          TABLE_SCHEMA = '${reqBody['db_name']}'`, function (err, db_result, fields) {
+          for (var table of db_result) {
+            table_uris[table['TABLE_NAME']] = `http://example.com/dataset/${table['TABLE_NAME']}`
+            table_columns[table['TABLE_NAME']] = {}
+            table_ranges[table['TABLE_NAME']] = {}
+          }
+
+          console.log(table_uris)
+
+          var columns_counter = 0
+          for (var table of db_result) {
+
+            con.query(`SELECT COLUMN_NAME, TABLE_NAME 
+              FROM information_schema.columns 
+              WHERE table_schema='${reqBody['db_name']}' 
+                AND table_name='${table['TABLE_NAME']}'`, function (err, column_result, fields) {
+                  if (err) {
+                    res.status(500).send('Error: ' + err);
+                    return
+                  }
+                  
+                  for (var column of column_result) {
+                    table_columns[column['TABLE_NAME']][column['COLUMN_NAME']] = `http://example.com/ontology/${column['COLUMN_NAME']}`
+                    table_ranges[column['TABLE_NAME']][column['COLUMN_NAME']] = ''
+                  }
+                  columns_counter++
+
+                  if (columns_counter == db_result.length) {
+
+                    columns_counter = 0
+                    for (var table_foreign of db_result) {
+                      con.query(`SELECT TABLE_NAME,COLUMN_NAME,CONSTRAINT_NAME, REFERENCED_TABLE_NAME,REFERENCED_COLUMN_NAME
+                        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+                        WHERE
+                          TABLE_SCHEMA = '${reqBody['db_name']}' AND
+                          TABLE_NAME = '${table_foreign['TABLE_NAME']}'`, function(err, foreign_result, fields) {
+                        
+                        for (var foreign_column of foreign_result) {
+                          if (foreign_column['REFERENCED_COLUMN_NAME'] == null) { // primary key
+                            table_columns[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = '@id'
+                            table_ranges[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = '@id'
+                          } else {
+                            table_ranges[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = table_uris[foreign_column['TABLE_NAME']]
+                          }
+                        }
+
+                        columns_counter++
+                        if (columns_counter == db_result.length) {
+                          // con.query(``, function(err, rows_result, fields) {
+                          print_all()
+                          save_to_context_var()
+                          res.send('asdf')
+                          resolve(conversion_context)
+                          // })
+                        }
+                      }) // end of fetch related columns in every table
+                    }
+                  }
+              }) // end of fetch columns in a table query
+          } // end of for-loop table
+
+        })
+
+
+    }) // end of column iteration
+  })
+
+  fetchColumns.then(function(result) {
+    console.log('done fetchColumns - Result:')
+    console.log(result)
+  })
+
+  // con.connect()
+
+
+
+
+})
+
+
+app.get('/sparql', function(req, res) {
+  res.redirect('http://localhost:8890/sparql')
+})
