@@ -422,9 +422,17 @@ app.get('/get/mysql', function(req, res) {
     database: "information_schema"
   })
 
+  var contents = mysql.createConnection({
+    host: 'localhost',
+    user: 'root',
+    password: '',
+    database: 'tugasakhir'
+  })
+
   var table_uris = {}
   var table_columns = {}
   var table_ranges = {}
+  var table_contents = {}
 
   var conversion_context = {}
 
@@ -445,6 +453,8 @@ app.get('/get/mysql', function(req, res) {
       for (var [column_name, column_uri] of Object.entries(table_column)) {
         if (column_uri != '@id') {
           conversion_context[column_name] = [column_uri]
+        } else {
+          conversion_context[column_name] = ['@id']
         }
       }
     }
@@ -514,9 +524,9 @@ app.get('/get/mysql', function(req, res) {
                         for (var foreign_column of foreign_result) {
                           if (foreign_column['REFERENCED_COLUMN_NAME'] == null) { // primary key
                             table_columns[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = '@id'
-                            table_ranges[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = '@id'
+                            table_ranges[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = ''
                           } else {
-                            table_ranges[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = table_uris[foreign_column['TABLE_NAME']]
+                            table_ranges[foreign_column['TABLE_NAME']][foreign_column['COLUMN_NAME']] = table_uris[foreign_column['REFERENCED_TABLE_NAME']]
                           }
                         }
 
@@ -525,7 +535,8 @@ app.get('/get/mysql', function(req, res) {
                           // con.query(``, function(err, rows_result, fields) {
                           print_all()
                           save_to_context_var()
-                          res.send('asdf')
+                          // res.send('asdf')
+                          con.destroy()
                           resolve(conversion_context)
                           // })
                         }
@@ -541,15 +552,74 @@ app.get('/get/mysql', function(req, res) {
     }) // end of column iteration
   })
 
+  var fetchRows = new Promise(function(resolve, reject) {
+    contents.connect(function (err) {
+      if (err) {
+        // res.status(500).send('Error: ' + err);
+        reject('Error: ' + err)
+      }
+
+      con.query(`SELECT TABLE_NAME
+      FROM INFORMATION_SCHEMA.TABLES
+      WHERE TABLE_SCHEMA = '${reqBody['db_name']}'`, function(err, table_result, table_fields) {
+        if (err) {
+          reject('Error: ' + err)
+        }
+        var table_iterated = 0
+        for (var table of table_result) {
+          // console.log(table)
+          contents.query(`SELECT * FROM ${table['TABLE_NAME']}`, function(err, rows, row_fields) {
+            // console.log(table)
+            table_contents[table_result[table_iterated]['TABLE_NAME']] = rows
+            table_iterated++
+            if (table_iterated == table_result.length) {
+              resolve(table_contents)
+            }
+          })
+        }
+      })
+    })
+  })
+
+  var resulted_jsonld = {}
+  
   fetchColumns.then(function(result) {
     console.log('done fetchColumns - Result:')
     console.log(result)
+
+    fetchRows.then(function(table_result) {
+      console.log('done fetchRows - Result:')
+      console.log(table_result)
+      
+      console.log('done aweu - Result:')
+      for (var [table_name, table_column] of Object.entries(table_columns)) {
+        var iterated_table = table_result[table_name]
+        resulted_jsonld[table_name] = []
+        for (var row of iterated_table) {
+          for (var col in table_column) {
+            if (table_column[col] == '@id') {
+              row[col] = `http://example.com/dataset/${table_name}_${row[col]}`
+              break
+            }
+          }
+
+          for (var range in table_ranges[table_name]) {
+            if (table_ranges[table_name][range] !== '') {
+              row[range] = `${table_ranges[table_name][range]}_${row[range]}`
+            }
+          }
+          row['@context'] = table_column
+          resulted_jsonld[table_name].push(row)
+        }
+      }
+
+      console.log(resulted_jsonld)
+      res.send(resulted_jsonld)
+    })
+    .catch(function(err) {
+      res.send('error: ' + err)
+    })
   })
-
-  // con.connect()
-
-
-
 
 })
 
