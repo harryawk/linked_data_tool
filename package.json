@@ -25,7 +25,9 @@
     "pug": "^2.0.3",
     "rdf": "^4.0.1",
     "rdflib": "^0.19.0",
+    "string-similarity": "^2.0.0",
     "virtuoso-sparql-client": "^0.2.2",
+    "xls-to-json": "^0.5.1",
     "xls2json": "0.0.3",
     "xlsx2json": "^1.0.0"
   },

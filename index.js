@@ -8,6 +8,7 @@ var jsonld = require('jsonld')
 var $rdf = require('rdflib')
 var csvtojson = require('csvtojson')
 var mysql  = require('mysql')
+var stringSimilarity = require('string-similarity')
 
 var app = express()
 var bodyParser = require('body-parser')
@@ -40,8 +41,84 @@ const upload = multer({
 })
 
 const csvConverter = require('csv2json')
-const xlsConverter = require('xls2json')
+// const xlsConverter = require('xls2json')
+const xlsConverter = require('xls-to-json')
 const xlsxConverter = require('xlsx2json')
+
+const onlyConvertXLSX = async (req, res) => {
+
+  let fs = require('fs')
+
+  var filename = req.file.filename
+  var separator = req.body.separator
+
+  xlsxConverter('./public/uploads/' + filename).then((jsonArray) => {
+    
+    var table_array = []
+    for (var jsonObject of jsonArray[0]) {
+      var row_array = []
+      for (var [key, item] of Object.entries(jsonObject)) {
+        row_array.push(item)
+      }
+      table_array.push(row_array)
+    }
+
+    res.send({status: true, data: table_array})
+  });
+}
+
+const fetchXLSXdata = async (req, res) => {
+
+  let fs = require('fs')
+
+  var filename = req.file.filename
+  var separator = req.body.separator
+
+  xlsxConverter('./public/uploads/' + filename).then((jsonArray) => {
+    
+    var table_array = []
+    for (var jsonObject of jsonArray[0]) {
+      var row_array = []
+      for (var [key, item] of Object.entries(jsonObject)) {
+        row_array.push(item)
+      }
+      table_array.push(row_array)
+    }
+    res.send({status: true, data: table_array})
+  });
+}
+
+const onlyConvertXLS = async (req, res) => {
+
+  let fs = require('fs')
+
+  var filename = req.file.filename
+  var separator = req.body.separator
+
+  console.log(filename)
+
+  xlsConverter({
+    input: './public/uploads/' + filename,
+    output: './public/uploads/' + filename + '.json'
+  }, function(err, result) {
+    if (err) {
+      console.error(err)
+    } else {
+      console.log(result)
+      res.send(result)
+    }
+  })
+  
+  // xlsConverter.convertFile('./public/uploads/' + filename, './public/uploads/' + filename + '.json', function (err, data) {
+  //   if (err) {
+  //     // there was an error
+  //   } else {
+  //     // it's all good
+  //     console.log(data)
+  //     res.send(data)
+  //   }
+  // });
+}
 
 const onlyConvertCSV = async (req, res) => {
 
@@ -150,6 +227,21 @@ app.post('/convert/*', upload.single('data'), (req, res) => {
     case '/convert/web/csv':
       onlyConvertCSV(req, res).then(function(result) {
         console.log('convert CSV for web done')
+      })
+      break;
+    case '/convert/web/xlsx':
+      onlyConvertXLSX(req, res).then(function(result) {
+        console.log('convert XLSX for web done')
+      })
+      break;
+    case '/convert/web/xls':
+      onlyConvertXLS(req, res).then(function(result) {
+        console.log('convert XLS for web done')
+      })
+      break;
+    case '/convert/web/xlsx/view':
+      fetchXLSXdata(req, res).then(function(result) {
+        console.log('Fetch data inside XLSX file to web done')
       })
       break;
     default:
@@ -309,6 +401,7 @@ var storeRDF = async (triples) => {
 
   } catch (e) {
     console.log(e)
+    console.log('====== error ====')
     return {
       status: false,
       err: e
@@ -363,7 +456,7 @@ const CONTEXT = {
 
 app.get('/dataset/*', function (req, res) {
 
-  var received_url = "http://example.com" + req.url
+  var received_url = `http://${req.headers.host}${req.url}`
   const DbpediaClient = new Client('http://localhost:8890/sparql')
 
   if (req.headers['content-type'] === 'application/json') {
@@ -426,7 +519,7 @@ app.get('/get/mysql', function(req, res) {
     host: 'localhost',
     user: 'root',
     password: '',
-    database: 'tugasakhir'
+    database: `${reqBody['db_name']}`
   })
 
   var table_uris = {}
@@ -486,7 +579,7 @@ app.get('/get/mysql', function(req, res) {
         WHERE
           TABLE_SCHEMA = '${reqBody['db_name']}'`, function (err, db_result, fields) {
           for (var table of db_result) {
-            table_uris[table['TABLE_NAME']] = `http://example.com/dataset/${table['TABLE_NAME']}`
+            table_uris[table['TABLE_NAME']] = `http://${req.headers.host}/dataset/${table['TABLE_NAME']}`
             table_columns[table['TABLE_NAME']] = {}
             table_ranges[table['TABLE_NAME']] = {}
           }
@@ -506,7 +599,7 @@ app.get('/get/mysql', function(req, res) {
                   }
                   
                   for (var column of column_result) {
-                    table_columns[column['TABLE_NAME']][column['COLUMN_NAME']] = `http://example.com/ontology/${column['COLUMN_NAME']}`
+                    table_columns[column['TABLE_NAME']][column['COLUMN_NAME']] = `http://${req.headers.host}/ontology/${column['COLUMN_NAME']}`
                     table_ranges[column['TABLE_NAME']][column['COLUMN_NAME']] = ''
                   }
                   columns_counter++
@@ -566,12 +659,17 @@ app.get('/get/mysql', function(req, res) {
           reject('Error: ' + err)
         }
         var table_iterated = 0
+        // console.log('table_result ======')
+        // console.log(table_result)
+        // console.log('table_result ======')
         for (var table of table_result) {
+          // console.log('table =========')
           // console.log(table)
           contents.query(`SELECT * FROM ${table['TABLE_NAME']}`, function(err, rows, row_fields) {
             // console.log(table)
             table_contents[table_result[table_iterated]['TABLE_NAME']] = rows
             table_iterated++
+            // console.log(table_contents)
             if (table_iterated == table_result.length) {
               resolve(table_contents)
             }
@@ -581,40 +679,106 @@ app.get('/get/mysql', function(req, res) {
     })
   })
 
+  var rdfStorer =  async function (data) {
+
+    try {
+
+      let rdf = ''
+      for (let [table_name, table_contents] of Object.entries(data)) {
+        // data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
+        // console.log(table)
+        for (var data_point of table_contents) {
+          // console.log('data_point =====')
+          // console.log(data_point)
+          data_point = await jsonld.expand(data_point)
+          
+          rdf += await jsonld.toRDF(data_point, { format: 'application/n-quads' })
+        }
+      }
+
+      console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
+
+      console.log('==== storeRDF(rdf) ====')
+      console.log(await storeRDF(rdf))
+      console.log('==== storeRDF(rdf) ====')
+
+      // console.log(rdf)
+      // res.send({
+      //   status: true,
+      //   data: rdf
+      // })
+    } catch (e) {
+      console.log(e)
+      // res.send({
+      //   status: true,
+      //   err: e
+      // })
+    }
+
+  }
+
   var resulted_jsonld = {}
   
   fetchColumns.then(function(result) {
     console.log('done fetchColumns - Result:')
-    console.log(result)
+    // console.log(result)
 
     fetchRows.then(function(table_result) {
       console.log('done fetchRows - Result:')
       console.log(table_result)
       
       console.log('done aweu - Result:')
+      // console.log(table_columns)
       for (var [table_name, table_column] of Object.entries(table_columns)) {
         var iterated_table = table_result[table_name]
+        // console.log(table_name)
+        // console.log('table_column =======')
+        // console.log(table_column)
+        // console.log('iterated_table ======')
+        // console.log(iterated_table)
         resulted_jsonld[table_name] = []
+
         for (var row of iterated_table) {
           for (var col in table_column) {
             if (table_column[col] == '@id') {
-              row[col] = `http://example.com/dataset/${table_name}_${row[col]}`
+              row[col] = `http://${req.headers.host}/dataset/${table_name}_${row[col]}`
               break
             }
           }
 
+
           for (var range in table_ranges[table_name]) {
             if (table_ranges[table_name][range] !== '') {
               row[range] = `${table_ranges[table_name][range]}_${row[range]}`
+              if (table_column[range] instanceof Object) {
+                continue
+              }
+              var temp = {
+                '@type': '@id',
+                '@id': table_column[range]
+              }
+              console.log('temp ===========')
+              console.log(temp)
+              table_column[range] = temp
             }
           }
+
           row['@context'] = table_column
           resulted_jsonld[table_name].push(row)
         }
       }
 
-      console.log(resulted_jsonld)
-      res.send(resulted_jsonld)
+      // console.log(resulted_jsonld)
+      // res.send(resulted_jsonld)
+
+      rdfStorer(resulted_jsonld).then(function() {
+        
+        res.send(resulted_jsonld)
+      })
+      .catch(function(err) {
+        res.send('error: ' + err)
+      })
+
     })
     .catch(function(err) {
       res.send('error: ' + err)
