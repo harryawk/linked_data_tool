@@ -17,13 +17,69 @@
   <title>RDF Subject Page</title>
 </head>
 <body>
+  <div class="row">&nbsp;</div>
+  <div class="row">&nbsp;</div>
   <div class="container">
-  <% for (var prop in subj) { %>
     <div class="row">
-      <%= prop %> - <%= subj[prop] %>
+      <h1>
+        <% if (isgraph) { %>
+          <%= subj['@graph'][0]['@id'] %>
+        <% } else { %>
+          <%= subj['@id'] %>
+        <% } %>
+      </h1>
     </div>
-  <% } %>
   </div>
+  <div class="row">&nbsp;</div>
+  <div class="row">&nbsp;</div>
+  <div class="container">
+    <div class="row">
+      <table class="table">
+        <tbody>
+          <% if (isgraph) { %>
+            <% for (var obj of subj['@graph']) { %>
+              <% for (var prop in obj) { %>
+                <% if (prop === '@id') { continue %>
+    
+                <% } else { %>
+                  <% if (typeof obj[prop] === 'object' ) { %>
+                    <tr>
+                      <td><%= prop %> of</td>
+                      <td><a href="<%= obj['@id'] %>"><%= obj['@id'] %></a></td>
+                    </tr>
+                  <% } else { %>
+                    <tr>
+                      <td><%= prop %></td>
+                      <td><%= obj[prop] %></td>
+                    </tr>
+                  <% } %>
+                <% } %>
+              <% } %>
+            <% } %>
+          <% } else { %>
+            <% for (var prop in subj) { %>
+              <% if (prop === '@id') { continue %>
+              
+              <% } else { %>
+                <% if (typeof subj[prop] === 'object' ) { %>
+                  <tr>
+                    <td><%= prop %></td>
+                    <td><a href="<%= subj[prop]['@id'] %>"><%= subj[prop]['@id'] %></a></td>
+                  </tr>
+                <% } else { %>
+                  <tr>
+                    <td><%= prop %></td>
+                    <td><%= subj[prop] %></td>
+                  </tr>
+                <% } %>
+              <% } %>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   
 </body>
 </html>

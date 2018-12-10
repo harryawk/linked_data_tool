@@ -84,6 +84,30 @@ const fetchXLSXdata = async (req, res) => {
       }
       table_array.push(row_array)
     }
+
+    // for (var row of table_array) {
+    //   row.splice(7, 1)
+    //   row.splice(12, 1)
+    // }
+
+    // for (var row of table_array) {
+    //   row.splice(24, 18)
+    //   row.splice(24, 0, table_array.indexOf(row)-5)
+    //   row.splice(24, 0, table_array.indexOf(row)-5)
+    //   row.splice(24, 0, table_array.indexOf(row)-5)
+    //   // table_array[table_array.indexOf(row)] = 
+    // }
+    // for (var row of table_array) {
+    //   table_array[table_array.indexOf(row)] = row.slice(24, 30)
+    // }
+    // for (var row of table_array) {
+    //   table_array[table_array.indexOf(row)] = row.slice(30, 36)
+    // }
+    // for (var row of table_array) {
+    //   table_array[table_array.indexOf(row)] = row.slice(36, 42)
+    // }
+
+
     res.send({status: true, data: table_array})
   });
 }
@@ -491,8 +515,10 @@ app.get('/dataset/*', function (req, res) {
         const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
         // send subject page with resource
         delete compacted['@context']
+        // console.log(JSON.stringify(compacted))
         res.render('pages/rdfsubject', {
-          'subj': compacted
+          'subj': compacted,
+          'isgraph': compacted.hasOwnProperty('@graph')
         })
         // res.send(compacted)
       })
@@ -502,6 +528,68 @@ app.get('/dataset/*', function (req, res) {
   }
 
 
+})
+
+app.get('/sparql', async function(req, res) {
+  if (_.isEmpty(req.query)) {
+
+    res.render('pages/sparql')
+  } else {
+
+    console.log(req.query)
+    var format = req.query.format
+
+    let http = require('http')
+
+    var do_request_sparql = function (url) {
+      return new Promise((resolve, reject) => {
+        var response_data = ''
+        var is_data_received = false
+        var data_received = function (val) {
+          is_data_received = val
+        }
+
+        let req = http.request(url, function (res) {
+          res.setEncoding('utf-8')
+
+          res.on('data', function (data) {
+            response_data += data
+          })
+
+          res.on('end', function () {
+            data_received(true)
+            // console.log()
+            resolve(response_data)
+            console.log('done')
+            console.log(response_data)
+          })
+        })
+
+        req.on('error', function (e) {
+          console.log('Error request : ' + e)
+          reject(e)
+        })
+
+        // req.write(inserted)
+        req.end()
+      })
+    }
+
+    var response = await do_request_sparql( `http://localhost:8890${req.url}`)
+    if (format == 'text/html') {
+      res.set('Content-Type', 'text/html')
+      res.send(new Buffer(response))
+
+    } else if (format == 'text/csv') {
+      var csv = response
+
+      res.setHeader('Content-disposition', 'attachment; filename=result.csv');
+      res.set('Content-Type', 'text/csv');
+      res.status(200).send(csv);
+    }
+    
+    // res.redirect(`http://localhost:8890${req.url}`)
+  }
 })
 
 app.get('/get/mysql', function(req, res) {
@@ -683,24 +771,27 @@ app.get('/get/mysql', function(req, res) {
 
     try {
 
-      let rdf = ''
       for (let [table_name, table_contents] of Object.entries(data)) {
+        // let rdf = ''
+        console.log('tablecontents')
         // data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
         // console.log(table)
         for (var data_point of table_contents) {
+          let rdf = ''
+          console.log('datapoints')
           // console.log('data_point =====')
           // console.log(data_point)
           data_point = await jsonld.expand(data_point)
           
           rdf += await jsonld.toRDF(data_point, { format: 'application/n-quads' })
+          console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
+          console.log('==== storeRDF(rdf) ====')
+          console.log(await storeRDF(rdf))
+          console.log('==== storeRDF(rdf) ====')
         }
       }
 
-      console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
 
-      console.log('==== storeRDF(rdf) ====')
-      console.log(await storeRDF(rdf))
-      console.log('==== storeRDF(rdf) ====')
 
       // console.log(rdf)
       // res.send({
@@ -769,7 +860,7 @@ app.get('/get/mysql', function(req, res) {
       }
 
       // console.log(resulted_jsonld)
-      // res.send(resulted_jsonld)
+      // res.send(resulted_jsonld); return;
 
       rdfStorer(resulted_jsonld).then(function() {
         
@@ -785,9 +876,4 @@ app.get('/get/mysql', function(req, res) {
     })
   })
 
-})
-
-
-app.get('/sparql', function(req, res) {
-  res.redirect('http://localhost:8890/sparql')
 })
