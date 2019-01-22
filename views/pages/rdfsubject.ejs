@@ -23,9 +23,9 @@
     <div class="row">
       <h1>
         <% if (isgraph) { %>
-          <%= subj['@graph'][0]['@id'] %>
+          <%= subj['@graph'][0]['@id'] ? subj['@graph'][0]['@id'] : subj['@graph'][0][identifier] %>
         <% } else { %>
-          <%= subj['@id'] %>
+          <%= subj['@id'] ? subj['@id'] : subj[identifier] %>
         <% } %>
       </h1>
     </div>
@@ -39,8 +39,32 @@
           <% if (isgraph) { %>
             <% for (var obj of subj['@graph']) { %>
               <% for (var prop in obj) { %>
-                <% if (prop === '@id') { continue %>
+                <% if (prop === '@id' || prop == identifier) { continue %>
     
+                <% } else if (context) { %>
+                  <% if (typeof context[prop] === 'object' ) { %>
+                    <% if (obj['@id']) { %>
+                      <tr>
+                        <td><a href="<%= prop %>"><%= prop %></a> of</td>
+                        <td><a href="<%= obj['@id'] %>"><%= obj['@id'] %></a></td>
+                      </tr>
+                    <% } else { %>
+                      <tr>
+                        <td><a href="<%= context[prop]['@id'] %>"><%= prop %></a> of</td>
+                        <td><a href="<%= obj[identifier] %>"><%= obj[identifier] %></a></td>
+                      </tr>
+                    <% } %>
+                  <% } else if (typeof obj[prop] === 'object') { %>
+                    <tr>
+                      <td><a href="<%= prop %>"><%= prop %></a> of</td>
+                      <td><a href="<%= obj['@id'] %>"><%= obj['@id'] %></a></td>
+                    </tr>
+                  <% } else if (prop != identifier) { %>
+                    <tr>
+                      <td><a href="<%= context[prop] ? context[prop] : prop %>"><%= prop %></a></td>
+                      <td><%= obj[prop] %></td>
+                    </tr>
+                  <% } %>
                 <% } else { %>
                   <% if (typeof obj[prop] === 'object' ) { %>
                     <tr>
@@ -58,13 +82,34 @@
             <% } %>
           <% } else { %>
             <% for (var prop in subj) { %>
-              <% if (prop === '@id') { continue %>
+              <% if (prop === '@id' || prop == identifier) { continue %>
               
+              <% } else if (context) { %>
+                <% if (typeof context[prop] === 'object') { %>
+                  <tr>
+                    <td><a href="<%= context[prop]['@id'] ? context[prop]['@id'] : prop %>"><%= prop %></a></td>
+                    <td><a href="<%= typeof subj[prop] === 'object' ? subj[prop]['@id'] : subj[prop] %>"><%= subj[prop] %></a></td>
+                  </tr>
+                <% } else if (typeof subj[prop] === 'object') { %>
+                  <tr>
+                    <td><a href="<%= prop %>"><%= prop %></a></td>
+                    <td><a href="<%= typeof subj[prop] === 'object' ? subj[prop]['@id'] : subj[prop] %>"><%= subj[prop]['@id'] %></a></td>
+                  </tr>
+                <% } else { %>
+                  <tr>
+                    <td><a href="<%= context[prop] ? context[prop] : prop %>"><%= prop %></a></td>
+                    <td><%= subj[prop] %></td>
+                  </tr>
+                <% } %>
               <% } else { %>
                 <% if (typeof subj[prop] === 'object' ) { %>
                   <tr>
                     <td><%= prop %></td>
-                    <td><a href="<%= subj[prop]['@id'] %>"><%= subj[prop]['@id'] %></a></td>
+                    <% if (subj[prop].hasOwnProperty('@value')) { %>
+                      <td><%= subj[prop]['@value'] %></td>
+                    <% } else { %>
+                      <td><a href="<%= subj[prop]['@id'] %>"><%= subj[prop]['@id'] %></a></td>
+                    <% } %>
                   </tr>
                 <% } else { %>
                   <tr>
