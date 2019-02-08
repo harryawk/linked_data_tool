@@ -474,71 +474,9 @@ const {Client} = require('virtuoso-sparql-client')
 
 var CONTEXT = {
   // nama: "http://schema.org/name",
-  alamat: "http://schema.org/address",
-  gaji: "http://schema.org/baseSalary"
+  // alamat: "http://schema.org/address",
+  // gaji: "http://schema.org/baseSalary"
 }
-
-app.get('/dataset/*', function (req, res) {
-
-  var received_url = `http://${req.headers.host}${req.url}`
-  // var received_url = `http://${req.header}${req.url}`
-  const DbpediaClient = new Client('http://localhost:8890/sparql')
-
-  if (req.headers['content-type'] === 'application/json') {
-    console.log('appjson')
-  
-    DbpediaClient.query(`DESCRIBE <${received_url}> FROM <http://example.com/datasets/graph/>`)
-      .then(async (subject_jsonld) => {
-  
-        if (_.isEmpty(subject_jsonld)) {
-          res.send(subject_jsonld)
-          return
-        }
-        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
-        res.send(compacted)
-      })
-      .catch((err) => {
-        res.send(err)
-      })
-  } else {
-
-    DbpediaClient.query(`DESCRIBE <${received_url}> FROM <http://example.com/datasets/graph/>`)
-      .then(async (subject_jsonld) => {
-
-        if (_.isEmpty(subject_jsonld)) {
-          // send 404 page
-          res.render('pages/404')
-          // res.send(subject_jsonld)
-          return
-        }
-
-
-        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
-        var identifier = Object.keys(compacted['@context']).filter(function (key) { return compacted['@context'][key] === '@id' })
-        // console.log('====== identifier ========')
-        // console.log(identifier)
-        // console.log('======= identifier ========')
-
-        // send subject page with resource
-        delete compacted['@context']
-
-
-        // console.log(JSON.stringify(compacted))
-        res.render('pages/rdfsubject', {
-          'subj': compacted,
-          'isgraph': compacted.hasOwnProperty('@graph'),
-          'identifier': identifier,
-          'context': CONTEXT,
-        })
-        // res.send(compacted)
-      })
-      .catch((err) => {
-        res.send(err)
-      })
-  }
-
-
-})
 
 app.get('/sparql', async function(req, res) {
   if (_.isEmpty(req.query)) {
@@ -1082,12 +1020,23 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
           // console.log('data_point =====')
           // console.log(data_point)
           data_point = await jsonld.expand(data_point)
-
+          for (var [key, value] of Object.entries(data_point)) {
+            let obj = {}
+            obj['@context'] = CONTEXT
+            obj[key] = value
+            console.log('============== obj ==============')
+            console.log(await jsonld.toRDF(obj, {format: 'application/n-quads'}))
+            console.log('============== obj ==============')
+          }
+          
+          
+          console.log('============== rdf ==============')
           rdf += await jsonld.toRDF(data_point, { format: 'application/n-quads' })
           console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
           console.log('==== storeRDF(rdf) ====')
           console.log(await storeRDF(rdf))
           console.log('==== storeRDF(rdf) ====')
+          console.log('============== rdf ==============')
         }
       }
 
@@ -1164,16 +1113,16 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
 
 
       
-      // resolve(resulted_jsonld)
+      resolve(resulted_jsonld)
 
-      rdfStorer(resulted_jsonld).then(function () {
+      // rdfStorer(resulted_jsonld).then(function () {
 
-        // res.send(resulted_jsonld)
-        resolve(resulted_jsonld)
-      })
-      .catch(function (err) {
-        reject('error: ' + err)
-      })
+      //   // res.send(resulted_jsonld)
+      //   resolve(resulted_jsonld)
+      // })
+      // .catch(function (err) {
+      //   reject('error: ' + err)
+      // })
 
 
     })
@@ -1184,10 +1133,11 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
 })
 
 ////////////////////////////////////////////////////
-app.get('/get/relational', async function (req, res) {
+app.post('/get/relational', async function (req, res) {
 
-  var reqBody = req.query
+  var reqBody = req.body
   var database_names = reqBody['db_name'].split(',')
+  var checked_attributes = reqBody['primary_keys'].split(',')
   var results = {}
   for (var database_name of database_names) {
     console.log(await convertOneDatabase(req, res, database_name))
@@ -1206,7 +1156,9 @@ app.get('/get/relational', async function (req, res) {
     }
   }
 
+  console.log('======== global_cleaned_array')
   console.log(global_cleaned_array)
+  console.log('======== global_cleaned_array')
 
   var scoreDatapointSimilarity = function (datapoint, row) {
 
@@ -1229,7 +1181,7 @@ app.get('/get/relational', async function (req, res) {
         }
         var val_score = stringSimilarity.compareTwoStrings(r_value.toLowerCase(), dp_value.toLowerCase())
         // console.log(val_score)
-        if (val_score >= 0.9 && (r_key.toLowerCase() == 'nama' || r_key.toLowerCase() == 'tanggal lahir')) {
+        if (val_score >= 0.9 && checked_attributes.indexOf(r_key.toLowerCase()) > -1 && checked_attributes.length > 0) {
           // console.log(`${r_value} - ${dp_value}`)
           current_score++
         }
@@ -1448,10 +1400,102 @@ app.get('/get/relational', async function (req, res) {
   console.log(global_merged_array)
   console.log('======= global_merged_array =========')
 
-  res.send({
-    merged_array: global_merged_array,
-    data: results
+  var sameColumns = reqBody['same_columns']
+
+  for (var singleDataObject of global_merged_array) {
+
+    var datakeys = {}
+
+    for (var [dataObjectKey, dataObjectValue] of Object.entries(singleDataObject)) {
+      if (dataObjectKey != '@context') {
+        datakeys[dataObjectKey.toLowerCase()] = dataObjectKey
+      }
+    }
+
+    for (var columnPair of sameColumns) {
+      for (var columnElem of columnPair) {
+        
+        if (columnPair.indexOf(columnElem) > 0) {
+          
+          let keyOfData = datakeys[columnPair[0]]
+          let keyOfOldData = datakeys[columnElem]
+
+          if (keyOfData != keyOfOldData) {
+            singleDataObject[keyOfOldData] = singleDataObject[keyOfData]
+          }
+
+        }
+
+      }
+    }
+
+    // TODO: lanjutkan
+  }
+
+  var rdfStorer = async function (data) {
+
+    try {
+
+      // for (let [table_name, table_contents] of Object.entries(data)) {
+        // let rdf = ''
+        console.log('tablecontents')
+        // data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
+        // console.log(table)
+        for (var data_point of data) {
+          let rdf = ''
+          console.log('datapoints')
+          // console.log('data_point =====')
+          // console.log(data_point)
+          data_point = await jsonld.expand(data_point)
+          // for (var [key, value] of Object.entries(data_point)) {
+          //   let obj = {}
+          //   obj['@context'] = CONTEXT
+          //   obj[key] = value
+          //   console.log('============== obj ==============')
+          //   console.log(await jsonld.toRDF(obj, { format: 'application/n-quads' }))
+          //   console.log('============== obj ==============')
+          // }
+
+
+          console.log('============== rdf ==============')
+          rdf += await jsonld.toRDF(data_point, { format: 'application/n-quads' })
+          console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
+          console.log('==== storeRDF(rdf) ====')
+          console.log(await storeRDF(rdf))
+          console.log('==== storeRDF(rdf) ====')
+          console.log('============== rdf ==============')
+        }
+      // }
+
+
+
+      // console.log(rdf)
+      // res.send({
+      //   status: true,
+      //   data: rdf
+      // })
+    } catch (e) {
+      console.log(e)
+      // res.send({
+      //   status: true,
+      //   err: e
+      // })
+    }
+
+  }
+
+  rdfStorer(global_merged_array).then(function() {
+    
+    res.send({
+      merged_array: global_merged_array,
+      data: results
+    })
+  }).catch(function(err) {
+    res.send({
+      err: 'err : ' + err
+    })
   })
+
 })
 
 app.post('/get/xlsx', upload.any(), async function(req, res) {
@@ -1462,12 +1506,73 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
   // console.log(req.file)
   // console.log(req.files)
   // var separator = req.body.separator
+  var reqBody = req.body
+  var checked_attributes = reqBody['primary_keys'].split(',')
+  var sameColumns = JSON.parse(reqBody['same_columns'])
+
+  console.log('======== sameColumns')
+  console.log(sameColumns)
+  console.log('======== sameColumns')
 
   var global_array = []
   var global_cleaned_array = []
   var global_merged_array = []
+  var global_enhanced_array = []
   var iterated_files = req.files.length
   var count_called = 0
+
+
+  var newRdfStorer = async function (data) {
+
+    try {
+
+      // for (let [table_name, table_contents] of Object.entries(data)) {
+      // let rdf = ''
+      console.log('tablecontents')
+      // data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
+      // console.log(table)
+      for (var data_point of data) {
+        let rdf = ''
+        console.log('datapoints')
+        data_point = await jsonld.expand(data_point)
+        console.log('data_point =====')
+        console.log(data_point)
+        // for (var [key, value] of Object.entries(data_point)) {
+        //   let obj = {}
+        //   obj['@context'] = CONTEXT
+        //   obj[key] = value
+        //   console.log('============== obj ==============')
+        //   console.log(await jsonld.toRDF(obj, { format: 'application/n-quads' }))
+        //   console.log('============== obj ==============')
+        // }
+
+
+        console.log('============== rdf ==============')
+        rdf += await jsonld.toRDF(data_point, { format: 'application/n-quads' })
+        console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
+        console.log('==== storeRDF(rdf) ====')
+        console.log(await storeRDF(rdf))
+        console.log('==== storeRDF(rdf) ====')
+        console.log('============== rdf ==============')
+      }
+      // }
+
+
+
+      // console.log(rdf)
+      // res.send({
+      //   status: true,
+      //   data: rdf
+      // })
+    } catch (e) {
+      console.log(e)
+      // res.send({
+      //   status: true,
+      //   err: e
+      // })
+    }
+
+  }
 
   var sendResponse = function(inserted_array) {
     global_array[count_called] = inserted_array
@@ -1476,16 +1581,186 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
       return
     }
     processResponse()
+    console.log('====== global_cleaned_array')
+    console.log(global_cleaned_array)
+    console.log('====== global_cleaned_array')
     mergeResponse()
     console.log('adding context')
     addContextToObject()
-    rdfStorer(global_merged_array).then(function() {
+    
+    mergeColumns()
+    
+    //TODO: add detect grouping
+    entityGrouping()
+    console.log('====== global_enhanced_array')
+    console.log(global_enhanced_array)
+    console.log('====== global_enhanced_array')
+
+    newRdfStorer(global_enhanced_array).then(function() {
 
       console.log('done')
       console.log(global_merged_array.length)
+
+      console.log('================ file object')
+      console.log(fileObjects)
+      console.log('================ file object')
   
-      res.send({ status: true, data: global_merged_array })
+      res.send({ enhanced: global_enhanced_array, status: true, data: global_merged_array })
     })
+  }
+
+  var entityGrouping = function() {
+    var entities = JSON.parse(reqBody['entities'])
+
+    if (entities.length == 0) {
+      return
+    }
+
+    // else
+    for (var entity of entities) {
+
+      if (!reqBody[entity]) {
+        return
+      }
+
+      if (!JSON.parse(reqBody[entity])) {
+        return
+      }
+
+      var entityProps = JSON.parse(reqBody[entity])
+
+      for (var dataObject of global_merged_array) {
+        var dataObjectIdx = global_merged_array.indexOf(dataObject)
+
+        
+        var newObject = {}
+        var idProp = ''
+        var idVal = ''
+
+        var pairAlias = []
+
+        var linkedPropsURI = []
+        var linkedProps = []
+        var linkedVals = []
+
+        for (var [dataObjectKey, dataObjectValue] of Object.entries(dataObject)) {
+          
+          if (dataObjectKey == '@context') {
+
+            for (var [_key, _val] of Object.entries(dataObjectValue)) {
+              if (_val == '@id') {
+                delete dataObjectValue[_key]
+              }
+            }
+
+
+            newObject['@context'] = dataObjectValue
+            continue
+          }
+          
+
+          for (var prop of entityProps) {
+            if (typeof prop === 'object') {
+              if (Array.isArray(prop)) {
+
+                if (dataObjectKey.toLowerCase() == prop[0]) {
+                  newObject[prop[1]] = dataObjectValue
+                  pairAlias.push([dataObjectKey, prop[1]])
+
+                  if (entityProps.indexOf(prop) == 0) {
+                    idProp = prop[1]
+                    idVal = `http://${req.headers.host}/dataset/data_${entity}_${dataObjectValue}`
+                  }
+                }
+
+                continue
+              }
+
+              if (Object.entries(prop)[0][1] == dataObjectKey.toLowerCase()) {
+
+                // if (entityProps.indexOf(prop) == 0) {
+                //   idProp = dataObjectKey
+                //   idVal = `http://${req.headers.host}/dataset/data_${(Object.entries(prop)[0][0]).toLowerCase()}_${dataObject[Object.entries(prop)[0][1]]}`
+                // }
+                linkedProps.push(Object.entries(prop)[0][0])
+                linkedPropsURI.push({'@type': '@id', '@id': `http://${req.headers.host}/ontology/${Object.entries(prop)[0][0]}`})
+                
+                newObject[Object.entries(prop)[0][0]] = `http://${req.headers.host}/dataset/data_${(Object.entries(prop)[0][0]).toLowerCase()}_${dataObjectValue}`
+                
+                linkedVals.push(`http://${req.headers.host}/dataset/data_${(Object.entries(prop)[0][0]).toLowerCase()}_${dataObjectValue}`)
+
+                CONTEXT[Object.entries(prop)[0][0]] = {'@type': '@id', '@id': `http://${req.headers.host}/ontology/${Object.entries(prop)[0][0]}`}
+              }
+
+              continue
+            }
+
+            if (dataObjectKey.toLowerCase() == prop) {
+              newObject[dataObjectKey] = dataObjectValue
+              if (entityProps.indexOf(prop) == 0) {
+                idProp = dataObjectKey
+                // newObject['@context'][dataObjectKey] = '@id'
+                idVal = `http://${req.headers.host}/dataset/data_${entity}_${dataObjectValue}`
+              }
+
+            }
+          }
+          
+        }
+
+        if (idProp != '') {
+          newObject['@context'][idProp] = '@id'
+          newObject[idProp] = idVal
+        }
+
+        if (linkedProps.length > 0) {
+          for (var eachProp of linkedProps) {
+            var curr_idx = linkedProps.indexOf(eachProp)
+
+            newObject['@context'][eachProp] = linkedPropsURI[curr_idx]
+          }
+        }
+
+        global_enhanced_array.push(newObject)
+
+      }
+    }
+  }
+
+  var mergeColumns = function () {
+
+    var sameColumns = JSON.parse(reqBody['same_columns'])
+
+    for (var singleDataObject of global_merged_array) {
+
+      var datakeys = {}
+
+      for (var [dataObjectKey, dataObjectValue] of Object.entries(singleDataObject)) {
+        if (dataObjectKey != '@context') {
+          datakeys[dataObjectKey.toLowerCase()] = dataObjectKey
+        }
+      }
+
+      for (var columnPair of sameColumns) {
+        for (var columnElem of columnPair) {
+
+          if (columnPair.indexOf(columnElem) > 0) {
+
+            let keyOfData = datakeys[columnPair[0]]
+            let keyOfOldData = datakeys[columnElem]
+
+            if (keyOfData != keyOfOldData) {
+              singleDataObject[keyOfOldData] = singleDataObject[keyOfData]
+            }
+
+          }
+
+        }
+      }
+
+      // TODO: lanjutkan
+    }
+
   }
 
   var rdfStorer = async function (data) {
@@ -1577,7 +1852,7 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
         }
         var val_score = stringSimilarity.compareTwoStrings(r_value.toLowerCase(), dp_value.toLowerCase())
         // console.log(val_score)
-        if (val_score >= 0.9 && (r_key == 'Nama' || r_key.toLowerCase() == 'tanggal lahir')) {
+        if (val_score >= 0.9 && checked_attributes.indexOf(r_key.toLowerCase()) > -1 && checked_attributes.length > 0) {
           // console.log(`${r_value} - ${dp_value}`)
           current_score++
         }
@@ -1821,7 +2096,32 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
     // console.log(metadatas)
   }
 
-  for (var file of req.files) {
+  var fileObjects = []
+  var priority_array = JSON.parse(reqBody['priority'])
+
+  for (var fileobj of req.files) {
+
+    // var stats = fs.statSync(fileobj.path);
+    // var mtime = stats.birthtimeMs;
+    
+    var objfile = {}
+
+    // console.log('======================================== iteration start')
+    // console.log(fileobj.filename)
+    // console.log(stats)
+    // console.log('======================================== iteration end')
+
+    var thename = fileobj.originalname
+
+    fileObjects.push(Object.assign(objfile, fileobj, {priority: priority_array.indexOf(thename)}))
+
+  }
+
+  fileObjects.sort(function(a, b) {
+    return a.priority - b.priority
+  })
+
+  for (var file of fileObjects) {
     console.log(file)
 
     var jsonArray = await xlsxConverter('./public/uploads/' + file.filename)
@@ -1840,6 +2140,10 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
       
     // });
   }
+
+  console.log('====== checked_attributes')
+  console.log(checked_attributes)
+  console.log('====== checked_attributes')
 
   // res.send('asdf')
 
@@ -1923,6 +2227,68 @@ app.get('/save/ontology', function(req, res) {
   }).catch(function(err) {
     res.send('error: ' + err)
   })
+
+
+})
+
+app.get('/dataset/*', function (req, res) {
+
+  var received_url = `http://${req.headers.host}${req.url}`
+  // var received_url = `http://${req.header}${req.url}`
+  const DbpediaClient = new Client('http://localhost:8890/sparql')
+
+  if (req.headers['content-type'] === 'application/json') {
+    console.log('appjson')
+
+    DbpediaClient.query(`DESCRIBE <${received_url}> FROM <http://example.com/datasets/graph/>`)
+      .then(async (subject_jsonld) => {
+
+        if (_.isEmpty(subject_jsonld)) {
+          res.send(subject_jsonld)
+          return
+        }
+        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
+        res.send(compacted)
+      })
+      .catch((err) => {
+        res.send(err)
+      })
+  } else {
+
+    DbpediaClient.query(`DESCRIBE <${received_url}> FROM <http://example.com/datasets/graph/>`)
+      .then(async (subject_jsonld) => {
+
+        if (_.isEmpty(subject_jsonld)) {
+          // send 404 page
+          res.render('pages/404')
+          // res.send(subject_jsonld)
+          return
+        }
+
+
+        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
+        var identifier = Object.keys(compacted['@context']).filter(function (key) { return compacted['@context'][key] === '@id' })
+        // console.log('====== identifier ========')
+        // console.log(identifier)
+        // console.log('======= identifier ========')
+
+        // send subject page with resource
+        delete compacted['@context']
+
+
+        // console.log(JSON.stringify(compacted))
+        res.render('pages/rdfsubject', {
+          'subj': compacted,
+          'isgraph': compacted.hasOwnProperty('@graph'),
+          'identifier': identifier,
+          'context': CONTEXT,
+        })
+        // res.send(compacted)
+      })
+      .catch((err) => {
+        res.send(err)
+      })
+  }
 
 
 })
