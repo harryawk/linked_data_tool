@@ -985,9 +985,9 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
             reject('Error: ' + err)
           }
           var table_iterated = 0
-          // console.log('table_result ======')
-          // console.log(table_result)
-          // console.log('table_result ======')
+          console.log('table_result ======')
+          console.log(table_result)
+          console.log('table_result ======')
           for (var table of table_result) {
             // console.log('table =========')
             // console.log(table)
@@ -1059,6 +1059,9 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
 
   var resulted_jsonld = {}
 
+  var fs = require('fs')
+  var mapping_ids = JSON.parse(fs.readFileSync('./public/context/context_mapping.json'))
+
   fetchColumns.then(function (result) {
     console.log('done fetchColumns - Result:')
     console.log(result)
@@ -1082,6 +1085,7 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
           for (var col in table_column) {
             if (table_column[col] == '@id') {
               row[col] = `http://${req.headers.host}/dataset/${table_name}_${row[col]}`
+              mapping_ids[row[col]] = `http://${req.headers.host}/context/context_relational.jsonld`
               break
             }
           }
@@ -1112,7 +1116,7 @@ var convertOneDatabase = (req, res, databaseName) => new Promise((resolve, rejec
       // res.send(resulted_jsonld); return;
 
 
-      
+      fs.writeFileSync('./public/context/context_mapping.json', JSON.stringify(mapping_ids))
       resolve(resulted_jsonld)
 
       // rdfStorer(resulted_jsonld).then(function () {
@@ -1383,6 +1387,9 @@ app.post('/get/relational', async function (req, res) {
       ontologies.push(ontology_object)
     }
 
+    var fs = require('fs')
+    fs.writeFileSync('./public/context/context_relational.jsonld', JSON.stringify({'@context': CONTEXT}))
+
     // res.send({
     //   data: ontologies
     // })
@@ -1429,7 +1436,6 @@ app.post('/get/relational', async function (req, res) {
       }
     }
 
-    // TODO: lanjutkan
   }
 
   var rdfStorer = async function (data) {
@@ -1503,6 +1509,8 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
   let fs = require('fs')
 
   var filename = req.files[1].filename
+
+  // fs.writeFileSync('./public/context/req.txt', req.protocol + '://' + req.headers.host + req.url)
   // console.log(req.file)
   // console.log(req.files)
   // var separator = req.body.separator
@@ -1518,12 +1526,14 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
   var global_cleaned_array = []
   var global_merged_array = []
   var global_enhanced_array = []
+  var ontologies = []
   var iterated_files = req.files.length
   var count_called = 0
 
 
   var newRdfStorer = async function (data) {
 
+    var contextMapping = {}
     try {
 
       // for (let [table_name, table_contents] of Object.entries(data)) {
@@ -1534,9 +1544,11 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
       for (var data_point of data) {
         let rdf = ''
         console.log('datapoints')
+        old_data_point = data_point
         data_point = await jsonld.expand(data_point)
         console.log('data_point =====')
         console.log(data_point)
+        contextMapping[data_point[0]['@id']] = old_data_point['@context']
         // for (var [key, value] of Object.entries(data_point)) {
         //   let obj = {}
         //   obj['@context'] = CONTEXT
@@ -1555,6 +1567,8 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
         console.log('==== storeRDF(rdf) ====')
         console.log('============== rdf ==============')
       }
+
+      fs.writeFileSync('./public/context/context_mapping.json', JSON.stringify(contextMapping))
       // }
 
 
@@ -1590,11 +1604,14 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
     
     mergeColumns()
     
-    //TODO: add detect grouping
     entityGrouping()
+
+
     console.log('====== global_enhanced_array')
     console.log(global_enhanced_array)
     console.log('====== global_enhanced_array')
+
+    storeOntology()
 
     newRdfStorer(global_enhanced_array).then(function() {
 
@@ -1609,7 +1626,85 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
     })
   }
 
+  var storeOntology = function() {
+
+    var ontologyStorer = async function (data) {
+
+      try {
+
+        for (let [table_name, table_contents] of Object.entries(data)) {
+          // let rdf = ''
+          console.log('tablecontents')
+          // data[0]['@id'] = 'http://example.com/dataset' + data[0]['@id']
+          // console.log(table)
+          for (var data_point of table_contents) {
+            let rdf = ''
+            console.log('datapoints')
+            // console.log('data_point =====')
+            // console.log(data_point)
+            data_point = await jsonld.expand(data_point)
+
+            rdf += await jsonld.toRDF(data_point, { format: 'application/n-quads' })
+            console.log(await jsonld.fromRDF(rdf, { format: 'application/n-quads' }))
+            console.log('==== storeRDF(rdf) ====')
+            console.log(await storeRDF(rdf))
+            console.log('==== storeRDF(rdf) ====')
+          }
+        }
+
+
+
+        // console.log(rdf)
+        // res.send({
+        //   status: true,
+        //   data: rdf
+        // })
+      } catch (e) {
+        console.log(e)
+        // res.send({
+        //   status: true,
+        //   err: e
+        // })
+      }
+
+    }
+
+    var baseContext = {
+      'label': 'http://www.w3.org/2000/01/rdf-schema#label'
+    }
+
+    // CONTEXT['label'] = 'http://www.w3.org/2000/01/rdf-schema#label'
+
+    for (var [label, ontology_uri] of Object.entries(CONTEXT)) {
+
+      var id_uri = ontology_uri
+      if (typeof id_uri === 'object') {
+        id_uri = id_uri['@id']
+      }
+
+      var ontology_object = {
+        '@context': baseContext,
+        '@id': id_uri,
+        'label': label
+      }
+
+      ontologies.push(ontology_object)
+    }
+
+    ontologyStorer({ data: ontologies }).then(function () {
+      console.log('done save ontologies')
+    }).catch(function (err) {
+      res.send('error: ' + err)
+    })
+
+  }
+
   var entityGrouping = function() {
+
+    if (!reqBody['entities']) {
+      return
+    }
+
     var entities = JSON.parse(reqBody['entities'])
 
     if (entities.length == 0) {
@@ -1660,6 +1755,7 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
           
 
           for (var prop of entityProps) {
+
             if (typeof prop === 'object') {
               if (Array.isArray(prop)) {
 
@@ -1708,19 +1804,47 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
           
         }
 
+        var contextObject = {}
+
         if (idProp != '') {
+
+          // contextObject[idProp] = '@id'
+          
+          // for (var [contextKey, contextValue] of Object.entries(newObject)) {
+          //   if (contextKey != idProp && contextKey != '@context') {
+          //     contextObject[contextKey] = `http://${req.headers.host}/ontology/${contextKey}`
+          //   }
+          // }
+
+          
           newObject['@context'][idProp] = '@id'
           newObject[idProp] = idVal
-        }
 
+          
+        }
+        
         if (linkedProps.length > 0) {
           for (var eachProp of linkedProps) {
             var curr_idx = linkedProps.indexOf(eachProp)
-
+            
             newObject['@context'][eachProp] = linkedPropsURI[curr_idx]
           }
         }
 
+        // if (pairAlias.length > 0) {
+        //   for (var pair of pairAlias) {
+        //     if (newObject['@context'][pair[0]]) {
+
+        //     }
+        //   }
+        // }
+
+
+        
+        fs.writeFileSync(`./public/context/xlsx_${entity}_context.jsonld`, JSON.stringify({'@context': newObject['@context']}))
+        fs.writeFileSync(`./public/context/xlsx_${entity}.jsonld`, JSON.stringify(contextObject))
+
+        newObject['@context'] = `http://localhost:5000/context/xlsx_${entity}_context.jsonld`
         global_enhanced_array.push(newObject)
 
       }
@@ -1817,6 +1941,7 @@ app.post('/get/xlsx', upload.any(), async function(req, res) {
     console.log('======== context ===========')
     console.log(the_context)
     CONTEXT = the_context
+    fs.writeFileSync(`./public/context/context_merged.jsonld`, JSON.stringify({'@context': CONTEXT}))
     console.log('======== context ===========')
 
     var _id = 1
@@ -2231,9 +2356,54 @@ app.get('/save/ontology', function(req, res) {
 
 })
 
-app.get('/dataset/*', function (req, res) {
+app.get('/dataset/*', async function (req, res) {
+
+  var fs = require('fs')
+  var http = require('http')
 
   var received_url = `http://${req.headers.host}${req.url}`
+  var contextMapping = JSON.parse(fs.readFileSync('./public/context/context_mapping.json', 'utf-8'))
+  // console.log('============= contextMapping')
+  // console.log(contextMapping)
+
+  var mappedContext = contextMapping[received_url]
+
+  var do_request = function (the_request_options) {
+    return new Promise((resolve, reject) => {
+
+      var response_data = ''
+      var is_data_received = false
+      var data_received = function (val) {
+        is_data_received = val
+      }
+
+      let req = http.request(the_request_options, function (res) {
+        res.setEncoding('utf-8')
+
+        res.on('data', function (data) {
+          response_data += data
+        })
+
+        res.on('end', function () {
+          data_received(true)
+          resolve(response_data)
+          console.log('done')
+        })
+      })
+
+      req.on('error', function (e) {
+        console.log('Error request : ' + e)
+        reject(e)
+      })
+
+      // req.write(inserted)
+      req.end()
+    })
+  }
+
+  var context_used = await do_request(mappedContext)
+  context_used = JSON.parse(context_used)
+
   // var received_url = `http://${req.header}${req.url}`
   const DbpediaClient = new Client('http://localhost:8890/sparql')
 
@@ -2247,7 +2417,14 @@ app.get('/dataset/*', function (req, res) {
           res.send(subject_jsonld)
           return
         }
-        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
+
+        console.log('subject jsonld')
+        console.log(subject_jsonld)
+
+        // console.log(mappedContext)
+        console.log(context_used)
+
+        const compacted = await jsonld.compact(subject_jsonld, context_used)
         res.send(compacted)
       })
       .catch((err) => {
@@ -2266,7 +2443,7 @@ app.get('/dataset/*', function (req, res) {
         }
 
 
-        const compacted = await jsonld.compact(subject_jsonld, CONTEXT)
+        const compacted = await jsonld.compact(subject_jsonld, context_used)
         var identifier = Object.keys(compacted['@context']).filter(function (key) { return compacted['@context'][key] === '@id' })
         // console.log('====== identifier ========')
         // console.log(identifier)
@@ -2281,7 +2458,7 @@ app.get('/dataset/*', function (req, res) {
           'subj': compacted,
           'isgraph': compacted.hasOwnProperty('@graph'),
           'identifier': identifier,
-          'context': CONTEXT,
+          'context': context_used['@context'],
         })
         // res.send(compacted)
       })
@@ -2300,6 +2477,9 @@ app.get('/ontology/*', function(req, res) {
   var received_url = `http://${req.headers.host}${req.url}`
   // var received_url = `http://${req.header}${req.url}`
   const DbpediaClient = new Client('http://localhost:8890/sparql')
+  var baseContext = {
+    'label': 'http://www.w3.org/2000/01/rdf-schema#label'
+  }
 
   // if (req.headers['content-type'] === 'application/json') {
   //   console.log('appjson')
@@ -2350,7 +2530,7 @@ app.get('/ontology/*', function(req, res) {
           'ontology': compacted,
           'isgraph': compacted.hasOwnProperty('@graph'),
           // 'identifier': identifier,
-          'context': CONTEXT,
+          'context': baseContext,
         })
         // res.send(compacted)
       })
